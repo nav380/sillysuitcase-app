@@ -5,7 +5,6 @@ import '../providers/auth_provider.dart';
 import '../widgets/post_tile.dart';
 import '../widgets/footer.dart';
 import 'post_detail_screen.dart';
-import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -21,7 +20,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final postsProvider = Provider.of<PostsProvider>(context, listen: false);
 
-    // Load initial posts
     postsProvider.fetchPosts(token: authProvider.token);
 
     _scrollController = ScrollController();
@@ -35,22 +33,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final postsProvider = Provider.of<PostsProvider>(context);
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text('SillySuitcase Posts'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.search),
-            onPressed: () {
-              Navigator.push(
-                  context, MaterialPageRoute(builder: (_) => SearchScreen()));
-            },
-          )
-        ],
-      ),
+      
       body: Column(
         children: [
           Expanded(
@@ -85,18 +69,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 PostDetailScreen(postId: post['id']),
                           ),
                         );
-                      },
-                      onCommentTap: () async {
-                        final success = await provider.postComment(
-                            post['id'], "This is a test comment", authProvider.token!);
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(success ? 'Comment posted!' : 'Failed to post comment'),
-                        ));
-                      },
-                      onSaveTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text('Saved post!'),
-                        ));
                       },
                     );
                   },

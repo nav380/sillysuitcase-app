@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/posts_provider.dart';
+import '../providers/categories_provider.dart';
 import '../widgets/post_tile.dart';
-import '../widgets/footer.dart';
 import 'post_detail_screen.dart';
+import '../widgets/footer.dart';
 
 class SearchScreen extends StatefulWidget {
   @override
@@ -11,89 +12,94 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  final _searchController = TextEditingController();
+  int? _selectedCategory;
   late ScrollController _scrollController;
-  String query = '';
 
   @override
   void initState() {
     super.initState();
-    final postsProvider = Provider.of<PostsProvider>(context, listen: false);
+    final categoriesProvider =
+        Provider.of<CategoriesProvider>(context, listen: false);
+    categoriesProvider.fetchCategories();
+
     _scrollController = ScrollController();
     _scrollController.addListener(() {
+      final postsProvider = Provider.of<PostsProvider>(context, listen: false);
       if (_scrollController.position.pixels >=
-              _scrollController.position.maxScrollExtent - 200 &&
-          postsProvider.hasMore) {
-        postsProvider.searchPosts(query: query);
+          _scrollController.position.maxScrollExtent - 200) {
+        postsProvider.fetchPosts(categoryId: _selectedCategory);
       }
     });
   }
 
-  void _startSearch(String q) {
-    final postsProvider = Provider.of<PostsProvider>(context, listen: false);
-    setState(() {
-      query = q;
-    });
-    postsProvider.resetSearch();
-    postsProvider.searchPosts(query: query);
-  }
-
   @override
   Widget build(BuildContext context) {
+    final categoriesProvider = Provider.of<CategoriesProvider>(context);
+    final postsProvider = Provider.of<PostsProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Search posts...',
-            border: InputBorder.none,
-            suffixIcon: IconButton(
-              icon: Icon(Icons.search),
-              onPressed: () => _startSearch(_searchController.text),
-            ),
-          ),
-          textInputAction: TextInputAction.search,
-          onSubmitted: (value) => _startSearch(value),
-        ),
-        backgroundColor: Colors.orange.shade700,
+        title: Text('Search by Category'),
       ),
       body: Column(
         children: [
-          Expanded(
-            child: Consumer<PostsProvider>(
-              builder: (context, provider, child) {
-                if (provider.isSearching && provider.posts.isEmpty)
-                  return Center(child: CircularProgressIndicator());
-
-                if (!provider.isSearching && provider.posts.isEmpty)
-                  return Center(child: Text('No posts found'));
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  itemCount: provider.posts.length + (provider.hasMore ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index == provider.posts.length) {
-                      return Center(child: CircularProgressIndicator());
-                    }
-                    final post = provider.posts[index];
-                    return PostTile(
-                      title: post['title']['rendered'],
-                      excerpt: post['excerpt']['rendered'],
-                      imageUrl: provider.getFeaturedImage(post),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PostDetailScreen(postId: post['id']),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            ),
+          // Dropdown for categories
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: categoriesProvider.isLoading
+                ? Center(child: CircularProgressIndicator())
+                : DropdownButtonFormField<int>(
+                    decoration: InputDecoration(
+                      labelText: 'Select Category',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    value: _selectedCategory,
+                    items: categoriesProvider.categories
+                        .map<DropdownMenuItem<int>>((category) {
+                      return DropdownMenuItem<int>(
+                        value: category['id'],
+                        child: Text(category['name']),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedCategory = value;
+                        postsProvider.reset(categoryId: value);
+                        postsProvider.fetchPosts(categoryId: value);
+                      });
+                    },
+                  ),
           ),
+
+          Expanded(
+            child: postsProvider.posts.isEmpty
+                ? Center(child: Text('No posts found'))
+                : ListView.builder(
+                    controller: _scrollController,
+                    itemCount:
+                        postsProvider.posts.length + (postsProvider.hasMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index == postsProvider.posts.length)
+                        return Center(child: CircularProgressIndicator());
+
+                      final post = postsProvider.posts[index];
+                      return PostTile(
+                        title: post['title']['rendered'],
+                        excerpt: post['excerpt']['rendered'],
+                        imageUrl: postsProvider.getFeaturedImage(post),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => PostDetailScreen(postId: post['id'])),
+                          );
+                        },
+                      );
+                    },
+                  ),
+          ),
+
           Footer(),
         ],
       ),
