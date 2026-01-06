@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import '../models/wordpress_post.dart';
+import '../models/post.dart';
 
 class WordPressApi {
   static const String baseUrl =

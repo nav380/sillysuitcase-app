@@ -1,59 +1,97 @@
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
-import '../screens/login_screen.dart';
-import '../screens/search_screen.dart'; // You need to create this screen
+import '../screens/search_screen.dart';
+import '../screens/profile_screen.dart';
 
 class Footer extends StatelessWidget {
+  final int currentIndex;
+
+  const Footer({
+    super.key,
+    required this.currentIndex,
+  });
+
+  static const Color activeColor = Color(0xff0D47A1); // Premium Blue
+  static const Color inactiveColor = Color(0xffA0A0A0); // Grey
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color.fromARGB(255, 248, 248, 248),
-      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Home button
-              IconButton(
-                icon: Icon(Icons.home, size: 30, color: const Color.fromARGB(255, 98, 95, 95)),
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => HomeScreen()),
-                  );
-                },
-              ),
-
-              SizedBox(width: 30),
-
-              // Search button
-              IconButton(
-                icon: Icon(Icons.search, size: 30, color: const Color.fromARGB(255, 98, 95, 95)),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => SearchScreen()),
-                  );
-                },
-              ),
-
-              SizedBox(width: 30),
-
-              // Login button
-              IconButton(
-                icon: Icon(Icons.login, size: 30, color: const Color.fromARGB(255, 88, 83, 83)),
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => LoginScreen()),
-                  );
-                },
-              ),
-            ],
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
           ),
         ],
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _navItem(
+            context,
+            icon: Icons.home,
+            index: 0,
+            screen: const HomeScreen(),
+          ),
+          _navItem(
+            context,
+            icon: Icons.search,
+            index: 1,
+            screen: const SearchScreen(),
+          ),
+          _navItem(
+            context,
+            icon: Icons.person,
+            index: 2,
+            screen: const ProfileScreen(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _navItem(
+    BuildContext context, {
+    required IconData icon,
+    required int index,
+    required Widget screen,
+  }) {
+    final bool isActive = currentIndex == index;
+
+    return GestureDetector(
+      onTap: () {
+        if (!isActive) {
+          Navigator.pushReplacement(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (_, __, ___) => screen,
+              transitionDuration: const Duration(milliseconds: 300),
+              transitionsBuilder: (_, animation, __, child) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: child,
+                );
+              },
+            ),
+          );
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive ? activeColor.withOpacity(0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Icon(
+          icon,
+          size: isActive ? 32 : 28,
+          color: isActive ? activeColor : inactiveColor,
+        ),
       ),
     );
   }
