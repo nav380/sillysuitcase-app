@@ -26,19 +26,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _fetchProfile() async {
     final token = context.read<AuthProvider>().token;
 
-    final response = await http.get(
-      Uri.parse('https://sillysuitcase.com/wp-json/wp/v2/users/me'),
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
-    );
-
-    if (response.statusCode == 200) {
+    if (token == null) {
       setState(() {
-        userData = json.decode(response.body);
         isLoading = false;
       });
-    } else {
+      return;
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('https://sillysuitcase.com/wp-json/wp/v2/users/me'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          userData = data;
+          isLoading = false;
+        });
+        debugPrint(response.body);
+      } else {
+        setState(() => isLoading = false);
+      }
+    } catch (e) {
+      debugPrint('Error fetching profile: $e');
       setState(() => isLoading = false);
     }
   }
@@ -50,6 +64,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // 🔹 Animated Header
+            AnimatedProfileHeader(userData: userData),
             Expanded(
               child: isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -58,7 +74,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       : SingleChildScrollView(
                           child: Column(
                             children: [
-                              _buildHeader(),
                               const SizedBox(height: 16),
                               _buildProfileCard(),
                               const SizedBox(height: 40),
@@ -74,53 +89,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // 🔹 HEADER
-Widget _buildHeader() {
-  return Container(
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-    decoration: BoxDecoration(
-      color: Colors.blue.shade900,
-      borderRadius: const BorderRadius.only(
-        bottomLeft: Radius.circular(24),
-        bottomRight: Radius.circular(24),
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.15),
-          blurRadius: 8,
-          offset: const Offset(0, 3),
-        ),
-      ],
-    ),
-    child: SafeArea(
-      bottom: false,
-      child: Row(
-        children: [
-          Text(
-            "Profile",
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const Spacer(),
-          // Optional: user avatar on header
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: Colors.white24,
-            child: const Icon(Icons.person, color: Colors.white),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
   // 🔹 PROFILE CARD
   Widget _buildProfileCard() {
-    final avatar = userData?['avatar_urls']?['96'];
+    final avatar = userData?['profile_image'];
     final name = userData?['name'] ?? 'User';
     final email = userData?['email'] ?? '';
 
@@ -144,7 +115,8 @@ Widget _buildHeader() {
             CircleAvatar(
               radius: 50,
               backgroundColor: Colors.blue.shade100,
-              backgroundImage: avatar != null ? NetworkImage(avatar) : null,
+              backgroundImage:
+                  avatar != null ? NetworkImage(avatar) : null,
               child: avatar == null
                   ? const Icon(Icons.person, size: 50, color: Colors.white)
                   : null,
@@ -201,16 +173,119 @@ Widget _buildHeader() {
               ),
             ],
           ),
-          child: ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text(
+          child: const ListTile(
+            leading: Icon(Icons.logout, color: Colors.red),
+            title: Text(
               "Logout",
               style: TextStyle(
                 color: Colors.red,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            trailing: Icon(Icons.arrow_forward_ios, size: 16),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 🔹 ANIMATED PROFILE HEADER
+class AnimatedProfileHeader extends StatefulWidget {
+  final Map<String, dynamic>? userData;
+  const AnimatedProfileHeader({super.key, this.userData});
+
+  @override
+  State<AnimatedProfileHeader> createState() => _AnimatedProfileHeaderState();
+}
+
+class _AnimatedProfileHeaderState extends State<AnimatedProfileHeader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<Offset> _slideAnimation;
+  late final Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -0.5),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
+
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = widget.userData?['profile_image'];
+
+    return SlideTransition(
+      position: _slideAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade900,
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(24),
+              bottomRight: Radius.circular(24),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Row(
+              children: [
+                const Text(
+                  "Profile",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const Spacer(),
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: Colors.white24,
+                  backgroundImage:
+                      avatar != null ? NetworkImage(avatar) : null,
+                  child: avatar == null
+                      ? const Icon(Icons.person, color: Colors.white)
+                      : null,
+                ),
+              ],
+            ),
           ),
         ),
       ),

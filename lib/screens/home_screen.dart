@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../widgets/post_tile.dart';
 import '../widgets/footer.dart';
 import 'post_detail_screen.dart';
+import '../screens/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _scrollController = ScrollController()..addListener(_onScroll);
 
+    // Fetch posts after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthProvider>();
       context.read<PostsProvider>().fetchPosts(token: auth.token);
@@ -48,65 +50,18 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _buildAppHeader(),
+            // 🔹 Animated Header
+            const AnimatedAppHeader(),
+            // 🔹 Hero Section
             _buildHeroSection(),
+            // 🔹 Section Title
             _buildSectionTitle(),
+            // 🔹 Posts List
             Expanded(child: _buildPosts()),
+            // 🔹 Footer
             const Footer(currentIndex: 0),
           ],
         ),
-      ),
-    );
-  }
-
-  // 🔹 APP HEADER (Gradient + Avatar)
-  Widget _buildAppHeader() {
-    final auth = context.read<AuthProvider>();
-    final name = auth.userName ?? 'Traveler';
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xff0D47A1), Color(0xff1976D2)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
-      ),
-      child: Row(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Hi, $name 👋",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                "Discover stories worth traveling for",
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          const CircleAvatar(
-            radius: 22,
-            backgroundColor: Colors.white,
-            child: Icon(Icons.person, color: Color(0xff0D47A1)),
-          )
-        ],
       ),
     );
   }
@@ -161,10 +116,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: const Color(0xffE3F2FD),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(
-                Icons.travel_explore,
-                size: 36,
-                color: Color(0xff0D47A1),
+              child: Image.asset(
+                'assets/icon/sillysuitcase.png',
+                height: 36,
+                width: 36,
+                fit: BoxFit.contain,
               ),
             )
           ],
@@ -230,6 +186,124 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         );
       },
+    );
+  }
+}
+
+// 🔹 ANIMATED HEADER
+class AnimatedAppHeader extends StatefulWidget {
+  const AnimatedAppHeader({super.key});
+
+  @override
+  State<AnimatedAppHeader> createState() => _AnimatedAppHeaderState();
+}
+
+class _AnimatedAppHeaderState extends State<AnimatedAppHeader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<Offset> _slideAnimation;
+  late final Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -0.5),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
+
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    final name = auth.userName ?? 'Traveler';
+
+    return SlideTransition(
+      position: _slideAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xff0D47A1), Color(0xff1976D2)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(24),
+              bottomRight: Radius.circular(24),
+            ),
+          ),
+          child: Row(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Hi, $name 👋",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Discover stories worth traveling for",
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ProfileScreen(),
+                    ),
+                  );
+                },
+                child: const CircleAvatar(
+                  radius: 22,
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.person,
+                    color: Color(0xff0D47A1),
+                  ),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

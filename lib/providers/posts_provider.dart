@@ -13,6 +13,12 @@ class PostsProvider extends ChangeNotifier {
   bool isSearching = false;
   String? searchQuery;
   int? categoryId;
+  final String proxyBase = 'https://proxy-hswz.vercel.app/api/fetch'; // <-- Replace with your Python server
+
+  // Helper: build proxy URL
+  Uri buildProxyUri({String? wpUrl}) {
+    return Uri.parse('$proxyBase?url=${Uri.encodeComponent(wpUrl!)}');
+  }
 
   // Fetch posts (normal or category)
   Future<void> fetchPosts({String? token, int? categoryId}) async {
@@ -24,52 +30,30 @@ class PostsProvider extends ChangeNotifier {
 
     this.categoryId = categoryId;
 
-    final url = Uri.parse(
-        'https://sillysuitcase.com/wp-json/wp/v2/posts?page=$page&per_page=5&_embed${categoryId != null ? "&categories=$categoryId" : ""}');
+    // Build WordPress API URL
+    final wpUrl =
+        'https://sillysuitcase.com/wp-json/wp/v2/posts?page=$page&per_page=5&_embed';
+
+    final url = buildProxyUri(wpUrl: wpUrl);
 
     try {
-      debugPrint('📡 FETCH REQUEST: $url');
-      
-      final response = await http.get(
-        url,
-        headers: {
-          // More realistic browser headers to bypass bot protection
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
-          'Referer': 'https://sillysuitcase.com/',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      );
+      debugPrint('📡 FETCH REQUEST (via proxy): $url');
+      final response = await http.get(url);
 
       debugPrint('📥 Response Status: ${response.statusCode}');
-      debugPrint('📥 Content-Type: ${response.headers['content-type']}');
 
       if (response.statusCode == 200) {
-        final contentType = response.headers['content-type'] ?? '';
-        if (!contentType.contains('application/json')) {
-          errorMessage = 'Server returned non-JSON response';
+        final data = jsonDecode(response.body);
+
+        if (data is Map && data.containsKey('error')) {
+          errorMessage = data['error'];
+          debugPrint('❌ Proxy Error: $errorMessage');
           hasMore = false;
           isLoading = false;
           notifyListeners();
           return;
         }
 
-        final data = jsonDecode(response.body);
-        
-        // Check if it's an error message from bot protection
-        if (data is Map && data.containsKey('message')) {
-          errorMessage = data['message'];
-          debugPrint('❌ API Error: ${data['message']}');
-          hasMore = false;
-          isLoading = false;
-          notifyListeners();
-          return;
-        }
-        
-        // Check if it's a valid posts array
         if (data is! List) {
           errorMessage = 'Unexpected response format';
           debugPrint('❌ Expected List but got: ${data.runtimeType}');
@@ -80,36 +64,36 @@ class PostsProvider extends ChangeNotifier {
         }
 
         debugPrint('✅ Decoded successfully: ${data.length} posts');
-        
+
         if (data.isEmpty || page > 5) {
           hasMore = false;
         } else {
           posts.addAll(data);
           page++;
         }
-      } else if (response.statusCode == 400) {
-        debugPrint('⚠️ Bad request (400) - No more posts');
-        hasMore = false;
       } else {
-        debugPrint('❌ HTTP Error ${response.statusCode}');
         errorMessage = 'Server error: ${response.statusCode}';
         hasMore = false;
       }
-    } on FormatException catch (e) {
-      debugPrint('❌ FORMAT EXCEPTION: $e');
-      errorMessage = 'Invalid response format';
-      hasMore = false;
     } catch (e) {
-      debugPrint('❌ GENERAL ERROR: $e');
+      debugPrint('❌ FETCH ERROR: $e');
       errorMessage = e.toString();
+      hasMore = false;
     }
 
     isLoading = false;
     notifyListeners();
   }
 
-  // Search posts
-  Future<void> searchPosts({required String query}) async {
+  // Search posts via proxy
+ Future<void> searchPosts({
+  required String query,
+  bool loadMore = false, // 👈 KEY FIX
+}) async {
+  if (isLoading) return;
+
+  // 🔑 NEW SEARCH
+  if (!loadMore) {
     isSearching = true;
     searchQuery = query;
     page = 1;
@@ -117,78 +101,103 @@ class PostsProvider extends ChangeNotifier {
     hasMore = true;
     errorMessage = null;
     notifyListeners();
+  }
 
-    final url = Uri.parse(
-        'https://sillysuitcase.com/wp-json/wp/v2/posts?search=$query&per_page=5&_embed${categoryId != null ? "&categories=$categoryId" : ""}');
+  if (!hasMore) return;
 
-    try {
-      debugPrint('🔍 SEARCH REQUEST: $url');
-      
-      final response = await http.get(
-        url,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
-          'Referer': 'https://sillysuitcase.com/',
-        },
+  isLoading = true;
+  notifyListeners();
+
+  final q = query.toLowerCase().trim();
+
+  try {
+    /// -----------------------------
+    /// 1️⃣ Fetch categories ONLY once
+    /// -----------------------------
+    int? matchedCategoryId;
+
+    if (page == 1) {
+      final catUrl = buildProxyUri(
+        wpUrl:
+            'https://sillysuitcase.com/wp-json/wp/v2/categories?per_page=100',
       );
 
-      debugPrint('📥 Search Response Status: ${response.statusCode}');
-      debugPrint('📥 Content-Type: ${response.headers['content-type']}');
+      final catResponse = await http.get(catUrl);
 
-      if (response.statusCode == 200) {
-        final contentType = response.headers['content-type'] ?? '';
-        if (!contentType.contains('application/json')) {
-          errorMessage = 'Server returned non-JSON response';
-          hasMore = false;
-          isLoading = false;
-          notifyListeners();
-          return;
+      if (catResponse.statusCode == 200) {
+        final List categories = jsonDecode(catResponse.body);
+
+        Map<String, dynamic>? exactMatch;
+        Map<String, dynamic>? partialMatch;
+
+        for (final cat in categories) {
+          final name = cat['name']?.toString().toLowerCase() ?? '';
+          final slug = cat['slug']?.toString().toLowerCase() ?? '';
+
+          if (name == q || slug == q) {
+            exactMatch = cat;
+            break;
+          }
+
+          if (name.contains(q) || slug.contains(q)) {
+            if (partialMatch == null ||
+                (cat['parent'] != 0 &&
+                    partialMatch!['parent'] == 0)) {
+              partialMatch = cat;
+            }
+          }
         }
 
-        final data = jsonDecode(response.body);
-        
-        // Check for bot protection error
-        if (data is Map && data.containsKey('message')) {
-          errorMessage = data['message'];
-          debugPrint('❌ Search API Error: ${data['message']}');
-          hasMore = false;
-          isLoading = false;
-          notifyListeners();
-          return;
-        }
-
-        // Validate it's an array
-        if (data is! List) {
-          errorMessage = 'Unexpected search response';
-          debugPrint('❌ Expected List but got: ${data.runtimeType}');
-          hasMore = false;
-          isLoading = false;
-          notifyListeners();
-          return;
-        }
-
-        debugPrint('✅ Search decoded: ${data.length} results');
-        
-        posts.addAll(data);
-        if (data.isEmpty) hasMore = false;
-        page++;
+        matchedCategoryId = (exactMatch ?? partialMatch)?['id'];
       }
-    } on FormatException catch (e) {
-      debugPrint('❌ SEARCH FORMAT EXCEPTION: $e');
-      errorMessage = 'Invalid search response';
-      hasMore = false;
-    } catch (e) {
-      debugPrint('❌ SEARCH ERROR: $e');
-      errorMessage = e.toString();
     }
 
-    isLoading = false;
-    notifyListeners();
+    /// -----------------------------
+    /// 2️⃣ Build POSTS URL
+    /// -----------------------------
+    final wpUrl = matchedCategoryId != null
+        ? 'https://sillysuitcase.com/wp-json/wp/v2/posts'
+            '?categories=$matchedCategoryId'
+            '&per_page=10'
+            '&page=$page'
+            '&_embed'
+        : 'https://sillysuitcase.com/wp-json/wp/v2/posts'
+            '?search=$query'
+            '&per_page=10'
+            '&page=$page'
+            '&_embed';
+
+    final postUrl = buildProxyUri(wpUrl: wpUrl);
+    debugPrint('🔗 POSTS REQUEST: $postUrl');
+
+    /// -----------------------------
+    /// 3️⃣ Fetch POSTS
+    /// -----------------------------
+    final response = await http.get(postUrl);
+
+    if (response.statusCode == 200) {
+      final List data = jsonDecode(response.body);
+
+      if (data.isEmpty) {
+        hasMore = false;
+      } else {
+        posts.addAll(data); // ✅ APPEND (NO REFRESH)
+        page++;
+        hasMore = data.length == 10;
+      }
+    } else {
+      hasMore = false;
+      errorMessage = 'Failed to load posts';
+    }
+  } catch (e) {
+    debugPrint('❌ SEARCH ERROR: $e');
+    errorMessage = e.toString();
+    hasMore = false;
   }
+
+  isLoading = false;
+  notifyListeners();
+}
 
   void resetSearch() {
     isSearching = false;
@@ -201,42 +210,28 @@ class PostsProvider extends ChangeNotifier {
   }
 
   Future<Map> fetchSinglePost(int id) async {
-    try {
-      debugPrint('📄 Fetching single post: $id');
-      
-      final response = await http.get(
-        Uri.parse('https://sillysuitcase.com/wp-json/wp/v2/posts/$id?_embed'),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Referer': 'https://sillysuitcase.com/',
-        },
-      );
+    final wpUrl = 'https://sillysuitcase.com/wp-json/wp/v2/posts/$id?_embed';
+    final url = buildProxyUri(wpUrl: wpUrl);
 
-      debugPrint('📥 Single Post Status: ${response.statusCode}');
+    try {
+      debugPrint('📄 Fetching single post (via proxy): $id');
+
+      final response = await http.get(url);
 
       if (response.statusCode == 200) {
-        final contentType = response.headers['content-type'] ?? '';
-        if (contentType.contains('application/json')) {
-          final data = jsonDecode(response.body);
-          
-          // Check for error message
-          if (data is Map && data.containsKey('message') && !data.containsKey('id')) {
-            debugPrint('❌ Single post error: ${data['message']}');
-            return {};
-          }
-          
-          return data;
-        } else {
-          debugPrint('❌ Single post returned HTML');
+        final data = jsonDecode(response.body);
+
+        if (data is Map && data.containsKey('error')) {
+          debugPrint('❌ Proxy Single Post Error: ${data['error']}');
+          return {};
         }
+
+        return data;
       }
-    } on FormatException catch (e) {
-      debugPrint('❌ Single post format error: $e');
     } catch (e) {
-      debugPrint('❌ Single post error: $e');
+      debugPrint('❌ Single post fetch error: $e');
     }
+
     return {};
   }
 
@@ -251,8 +246,7 @@ class PostsProvider extends ChangeNotifier {
     return null;
   }
 
-  Future<void> reset({int? categoryId, String? token}) async {
-    debugPrint('🔄 RESET called');
+  Future<void> reset({int? categoryId}) async {
     posts.clear();
     page = 1;
     hasMore = true;
@@ -260,8 +254,7 @@ class PostsProvider extends ChangeNotifier {
     errorMessage = null;
     this.categoryId = categoryId;
     notifyListeners();
-    
-    // Fetch posts after reset
-    await fetchPosts(token: token, categoryId: categoryId);
+
+    await fetchPosts(categoryId: categoryId);
   }
 }

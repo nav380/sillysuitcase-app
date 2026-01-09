@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../screens/home_screen.dart';
 import '../screens/search_screen.dart';
 import '../screens/profile_screen.dart';
+import '../providers/posts_provider.dart';
 
 class Footer extends StatelessWidget {
   final int currentIndex;
@@ -36,6 +38,7 @@ class Footer extends StatelessWidget {
             icon: Icons.home,
             index: 0,
             screen: const HomeScreen(),
+            resetPosts: true, // 👈 Reset posts on Home click
           ),
           _navItem(
             context,
@@ -59,12 +62,19 @@ class Footer extends StatelessWidget {
     required IconData icon,
     required int index,
     required Widget screen,
+    bool resetPosts = false, // optional
   }) {
     final bool isActive = currentIndex == index;
 
     return GestureDetector(
       onTap: () {
         if (!isActive) {
+          // 🔹 Reset Home posts if needed
+          if (resetPosts) {
+            final provider = context.read<PostsProvider>();
+            provider.reset(); // Clears posts, resets hasMore & page, fetches first page
+          }
+
           Navigator.pushReplacement(
             context,
             PageRouteBuilder(
