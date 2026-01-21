@@ -97,17 +97,15 @@ class PostsProvider extends ChangeNotifier {
 
   final q = query.toLowerCase().trim();
 
+  bool categoryFoundPosts = false;
+
   try {
-    /// -----------------------------
-    /// 1️⃣ Fetch ALL categories
-    /// -----------------------------
+    /// 1️⃣ FETCH CATEGORIES
     final catUrl = buildProxyUri(
-      wpUrl:
-          'https://sillysuitcase.com/wp-json/wp/v2/categories?per_page=100',
+      wpUrl: 'https://sillysuitcase.com/wp-json/wp/v2/categories?per_page=100',
     );
 
     final catResponse = await http.get(catUrl);
-
     int? matchedCategoryId;
 
     if (catResponse.statusCode == 200) {
@@ -120,73 +118,70 @@ class PostsProvider extends ChangeNotifier {
         final name = cat['name']?.toString().toLowerCase() ?? '';
         final slug = cat['slug']?.toString().toLowerCase() ?? '';
 
-        // 1️⃣ Exact match (highest priority)
         if (name == q || slug == q) {
           exactMatch = cat;
           break;
         }
-
-        // 2️⃣ Partial match
         if (name.contains(q) || slug.contains(q)) {
-          // Prefer child categories over parent
           if (partialMatch == null ||
-              (cat['parent'] != 0 &&
-                  partialMatch!['parent'] == 0)) {
+              (cat['parent'] != 0 && partialMatch!['parent'] == 0)) {
             partialMatch = cat;
           }
         }
       }
 
-      final matchedCat = exactMatch ?? partialMatch;
-      matchedCategoryId = matchedCat?['id'];
+      matchedCategoryId = (exactMatch ?? partialMatch)?['id'];
     }
 
-    /// -----------------------------
-    /// 2️⃣ Build POSTS URL
-    /// -----------------------------
+    /// 2️⃣ QUERY POSTS (CATEGORY FIRST)
     String wpUrl;
 
     if (matchedCategoryId != null) {
-      wpUrl =
-          'https://sillysuitcase.com/wp-json/wp/v2/posts'
+      wpUrl = 'https://sillysuitcase.com/wp-json/wp/v2/posts'
           '?categories=$matchedCategoryId'
           '&per_page=10'
           '&page=$page'
           '&_embed';
-      debugPrint('✅ Category match ID: $matchedCategoryId');
-    } else {
-      wpUrl =
-          'https://sillysuitcase.com/wp-json/wp/v2/posts'
-          '?search=$query'
-          '&per_page=5'
-          '&page=$page'
-          '&_embed';
-      debugPrint('🔍 Keyword search');
-    }
 
-    final postUrl = buildProxyUri(wpUrl: wpUrl);
-    debugPrint('🔗 POSTS REQUEST: $postUrl');
+      final postUrl = buildProxyUri(wpUrl: wpUrl);
+      final response = await http.get(postUrl);
 
-    /// -----------------------------
-    /// 3️⃣ Fetch POSTS
-    /// -----------------------------
-    final response = await http.get(postUrl);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-
-      if (data is List) {
-        posts.addAll(data);
-        if (data.length <= 4) hasMore = false;
-        page++;
-      } else {
-        errorMessage = 'Unexpected response';
-        hasMore = false;
+        if (data is List && data.isNotEmpty) {
+          categoryFoundPosts = true;
+          posts.addAll(data);
+          if (data.length <= 4) hasMore = false;
+          page++;
+        }
       }
-    } else {
-      errorMessage = 'Failed to load posts';
-      hasMore = false;
     }
+
+    /// 3️⃣ FALLBACK TO TITLE SEARCH API IF NO POST FOUND
+    if (!categoryFoundPosts) {
+      debugPrint('🔁 Fallback Title Search triggered');
+
+      final fallbackUrl = buildProxyUri(
+        wpUrl: 'https://sillysuitcase.com/wp-json/ss/v1/search?q=$query',
+      );
+
+      final fbResponse = await http.get(fallbackUrl);
+
+      if (fbResponse.statusCode == 200) {
+        final List data = jsonDecode(fbResponse.body);
+
+        if (data.isNotEmpty) {
+          debugPrint('🔎 Found via fallback title matching: ${data.length}');
+          posts.addAll(data);
+          hasMore = false; // fallback returns full list, no pagination
+        } else {
+          errorMessage = 'No results found';
+          hasMore = false;
+        }
+      }
+    }
+
   } catch (e) {
     debugPrint('❌ SEARCH ERROR: $e');
     errorMessage = e.toString();

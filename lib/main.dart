@@ -3,16 +3,21 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/posts_provider.dart';
 import 'providers/categories_provider.dart';
+import 'providers/like_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
-import 'providers/like_provider.dart';
+
+
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Create AuthProvider and load saved JWT
+  // Initialize notifications
+  
+  // Auth Provider
   final authProvider = AuthProvider();
-  await authProvider.loadToken(); // loads JWT from SharedPreferences
+  await authProvider.loadToken();
 
   runApp(
     MultiProvider(
@@ -35,23 +40,17 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'SillySuitcase',
-      theme: ThemeData(
-        primarySwatch: Colors.orange,
-      ),
+      theme: ThemeData(primarySwatch: Colors.orange),
       home: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
-          // Show loading while checking auth status
           if (authProvider.isLoading) {
             return const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(),
-              ),
+              body: Center(child: CircularProgressIndicator()),
             );
           }
-          
-          // Navigate based on auth status
-          return authProvider.token != null 
-              ? const HomeScreen() 
+
+          return authProvider.token != null
+              ? const HomeScreen()
               : const LoginScreen();
         },
       ),
